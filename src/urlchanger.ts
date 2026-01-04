@@ -5,7 +5,7 @@ import { stringInject } from './stringinject';
 import { GAME_NAME } from "./discord/constants";
 
 // Change this to false if you want to disable the ability to change URLs
-export const ALLOW_URL_CHANGE = false;
+export const ALLOW_URL_CHANGE = true;
 
 export const getUrlFromStore = (store: Store) => {
     return store.public.get('url');
