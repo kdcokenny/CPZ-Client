@@ -42,7 +42,7 @@
       "artifactName": "CPZero-Client-${version}.${ext}"
     },
     "linux": {
-      "category": "game",
+      "category": "Game",
       "publish": "github",
       "target": [
         "deb",
@@ -54,7 +54,7 @@
     "appImage": {
       "synopsis": "Club Penguin Zero Client",
       "description": "Desktop client for Club Penguin Zero",
-      "category": "Games",
+      "category": "Game",
       "artifactName": "CPZero-Client-${version}.${ext}"
     }
   },
@@ -88,4 +88,5 @@
     "cross-fetch": "^4.1.0"
   }
 }
+
 
