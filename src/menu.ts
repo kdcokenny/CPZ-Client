@@ -16,8 +16,6 @@ const createMenuTemplate = (store: Store, mainWindow: BrowserWindow): MenuItemCo
 
     const template = [];
 
-    const isMac = process.platform === 'darwin';
-
     const options: MenuItemConstructorOptions = {
         id: '1',
         label: localizer.__('MENU_OPTIONS'),
@@ -72,7 +70,7 @@ const createMenuTemplate = (store: Store, mainWindow: BrowserWindow): MenuItemCo
             { type: 'separator' },
             {
                 label: localizer.__('MENU_QUIT'),
-                role: isMac ? 'close' : 'quit'
+                role: 'quit'
             }
         ]
     };

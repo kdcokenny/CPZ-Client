@@ -190,16 +190,39 @@ export const startDiscordRPC = (store: Store, mainWindow: BrowserWindow) => {
     startRequestListener(store, mainWindow);
 };
 
-export const stopDiscordRPC = (store: Store) => {
-    const state = getDiscordStateFromStore(store);
+const isAlreadyDestroyedDiscordClientError = (error: unknown) => {
+    if (!(error instanceof Error)) {
+        return false;
+    }
 
-    if (!state || !state.client) {
+    const message = error.message.toLowerCase();
+
+    return message.includes('already destroyed')
+        || message.includes('not connected')
+        || message.includes('connection is closed')
+        || message.includes('connection closed')
+        || message.includes('disconnected');
+};
+
+export const stopDiscordRPC = async (store: Store) => {
+    const state = getDiscordStateFromStore(store);
+    const discordClient = state?.client;
+
+    if (!discordClient) {
         return;
     }
 
-    state.client.destroy();
-
     setDiscordStateInStore(store, {});
+
+    try {
+        await discordClient.destroy();
+    } catch (error) {
+        if (isAlreadyDestroyedDiscordClientError(error)) {
+            return;
+        }
+
+        throw error;
+    }
 };
 
 export const enableOrDisableDiscordRPC = async (store: Store, mainWindow: BrowserWindow) => {
@@ -227,7 +250,7 @@ export const enableOrDisableDiscordRPC = async (store: Store, mainWindow: Browse
             showReloadDialog(store, mainWindow);
         }
     } else {
-        stopDiscordRPC(store);
+        await stopDiscordRPC(store);
     }
 };
 
