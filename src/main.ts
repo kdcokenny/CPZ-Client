@@ -31,6 +31,7 @@ autoUpdater.checkForUpdatesAndNotify();
 let mainWindow: BrowserWindow;
 let hasCompletedQuitTeardown = false;
 let isRunningQuitTeardown = false;
+const QUIT_TEARDOWN_TIMEOUT_MS = 3000;
 
 const getErrorMessage = (error: unknown) => {
     if (error instanceof Error) {
@@ -38,6 +39,19 @@ const getErrorMessage = (error: unknown) => {
     }
 
     return String(error);
+};
+
+const runQuitTeardownWithTimeout = async () => {
+    const timeoutError = new Error(`Timed out after ${QUIT_TEARDOWN_TIMEOUT_MS}ms while stopping Discord RPC during app quit.`);
+
+    await Promise.race([
+        stopDiscordRPC(store),
+        new Promise<never>((_, reject) => {
+            setTimeout(() => {
+                reject(timeoutError);
+            }, QUIT_TEARDOWN_TIMEOUT_MS);
+        })
+    ]);
 };
 
 app.on('ready', async () => {
@@ -72,7 +86,7 @@ app.on('before-quit', (event) => {
 
     isRunningQuitTeardown = true;
 
-    void stopDiscordRPC(store)
+    void runQuitTeardownWithTimeout()
         .catch((error: unknown) => {
             log.error(`Failed to stop Discord RPC during app shutdown: ${getErrorMessage(error)}`);
         })

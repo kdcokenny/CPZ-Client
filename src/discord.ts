@@ -7,6 +7,8 @@ import { showReloadDialog } from './reload';
 import { CPLocation, CPLocationType, DiscordState } from "./store/DiscordState";
 import { stringInject } from './stringinject';
 
+let discordStopPromise: Promise<void> | null = null;
+
 const getDiscordRPCEnabledFromStore = (store: Store) => {
     return store.public.get('enableDiscordRPC');
 };
@@ -205,6 +207,10 @@ const isAlreadyDestroyedDiscordClientError = (error: unknown) => {
 };
 
 export const stopDiscordRPC = async (store: Store) => {
+    if (discordStopPromise) {
+        return discordStopPromise;
+    }
+
     const state = getDiscordStateFromStore(store);
     const discordClient = state?.client;
 
@@ -212,16 +218,26 @@ export const stopDiscordRPC = async (store: Store) => {
         return;
     }
 
-    setDiscordStateInStore(store, {});
+    discordStopPromise = (async () => {
+        try {
+            await discordClient.destroy();
+        } catch (error) {
+            if (!isAlreadyDestroyedDiscordClientError(error)) {
+                throw error;
+            }
+        } finally {
+            const latestState = getDiscordStateFromStore(store);
+
+            if (latestState?.client === discordClient) {
+                setDiscordStateInStore(store, {});
+            }
+        }
+    })();
 
     try {
-        await discordClient.destroy();
-    } catch (error) {
-        if (isAlreadyDestroyedDiscordClientError(error)) {
-            return;
-        }
-
-        throw error;
+        await discordStopPromise;
+    } finally {
+        discordStopPromise = null;
     }
 };
 
