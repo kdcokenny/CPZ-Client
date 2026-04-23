@@ -7,6 +7,8 @@ import { showReloadDialog } from './reload';
 import { CPLocation, CPLocationType, DiscordState } from "./store/DiscordState";
 import { stringInject } from './stringinject';
 
+let discordStopPromise: Promise<void> | null = null;
+
 const getDiscordRPCEnabledFromStore = (store: Store) => {
     return store.public.get('enableDiscordRPC');
 };
@@ -190,16 +192,53 @@ export const startDiscordRPC = (store: Store, mainWindow: BrowserWindow) => {
     startRequestListener(store, mainWindow);
 };
 
-export const stopDiscordRPC = (store: Store) => {
-    const state = getDiscordStateFromStore(store);
+const isAlreadyDestroyedDiscordClientError = (error: unknown) => {
+    if (!(error instanceof Error)) {
+        return false;
+    }
 
-    if (!state || !state.client) {
+    const message = error.message.toLowerCase();
+
+    return message.includes('already destroyed')
+        || message.includes('not connected')
+        || message.includes('connection is closed')
+        || message.includes('connection closed')
+        || message.includes('disconnected');
+};
+
+export const stopDiscordRPC = async (store: Store) => {
+    if (discordStopPromise) {
+        return discordStopPromise;
+    }
+
+    const state = getDiscordStateFromStore(store);
+    const discordClient = state?.client;
+
+    if (!discordClient) {
         return;
     }
 
-    state.client.destroy();
+    discordStopPromise = (async () => {
+        try {
+            await discordClient.destroy();
+        } catch (error) {
+            if (!isAlreadyDestroyedDiscordClientError(error)) {
+                throw error;
+            }
+        } finally {
+            const latestState = getDiscordStateFromStore(store);
 
-    setDiscordStateInStore(store, {});
+            if (latestState?.client === discordClient) {
+                setDiscordStateInStore(store, {});
+            }
+        }
+    })();
+
+    try {
+        await discordStopPromise;
+    } finally {
+        discordStopPromise = null;
+    }
 };
 
 export const enableOrDisableDiscordRPC = async (store: Store, mainWindow: BrowserWindow) => {
@@ -227,7 +266,7 @@ export const enableOrDisableDiscordRPC = async (store: Store, mainWindow: Browse
             showReloadDialog(store, mainWindow);
         }
     } else {
-        stopDiscordRPC(store);
+        await stopDiscordRPC(store);
     }
 };
 

@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import log from "electron-log/main";
 import { autoUpdater } from "electron-updater";
-import { startDiscordRPC } from "./discord";
+import { startDiscordRPC, stopDiscordRPC } from "./discord";
 import loadFlashPlugin from "./flash-loader";
 import i18n from "./localization/i18n";
 import startMenu from "./menu";
@@ -29,6 +29,30 @@ autoUpdater.checkForUpdatesAndNotify();
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow;
+let hasCompletedQuitTeardown = false;
+let isRunningQuitTeardown = false;
+const QUIT_TEARDOWN_TIMEOUT_MS = 3000;
+
+const getErrorMessage = (error: unknown) => {
+    if (error instanceof Error) {
+        return error.stack ?? error.message;
+    }
+
+    return String(error);
+};
+
+const runQuitTeardownWithTimeout = async () => {
+    const timeoutError = new Error(`Timed out after ${QUIT_TEARDOWN_TIMEOUT_MS}ms while stopping Discord RPC during app quit.`);
+
+    await Promise.race([
+        stopDiscordRPC(store),
+        new Promise<never>((_, reject) => {
+            setTimeout(() => {
+                reject(timeoutError);
+            }, QUIT_TEARDOWN_TIMEOUT_MS);
+        })
+    ]);
+};
 
 app.on('ready', async () => {
     // Choose the best language before starting everything up.
@@ -48,24 +72,40 @@ app.on('ready', async () => {
     });
 });
 
-app.on('window-all-closed', async () => {
+app.on('before-quit', (event) => {
+    if (hasCompletedQuitTeardown) {
+        return;
+    }
+
+    if (isRunningQuitTeardown) {
+        event.preventDefault();
+        return;
+    }
+
+    event.preventDefault();
+
+    isRunningQuitTeardown = true;
+
+    void runQuitTeardownWithTimeout()
+        .catch((error: unknown) => {
+            log.error(`Failed to stop Discord RPC during app shutdown: ${getErrorMessage(error)}`);
+        })
+        .finally(() => {
+            hasCompletedQuitTeardown = true;
+            isRunningQuitTeardown = false;
+
+            app.quit();
+        });
+});
+
+app.on('window-all-closed', () => {
     // On macOS it is common for applications and their menu bar
     // to stay active until the user quits explicitly with Cmd + Q.
-    if (process.platform !== 'darwin') {
-        try {
-            const discordClient = store.private.get('discordState')?.client;
-
-            if (discordClient) {
-                await discordClient.destroy();
-            }
-        }
-        finally {
-            // Always try to quit.
-            app.quit();
-
-            process.exit(0);
-        }
+    if (process.platform === 'darwin') {
+        return;
     }
+
+    app.quit();
 });
 
 app.on('activate', async () => {
